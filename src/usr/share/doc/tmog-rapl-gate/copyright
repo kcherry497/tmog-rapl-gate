@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: tmog-rapl-gate
+Files: *
+Copyright: 2026 Kevin Cherry
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software, to deal in the software without restriction, subject to
+ the above copyright notice being included. THE SOFTWARE IS PROVIDED "AS IS",
+ WITHOUT WARRANTY OF ANY KIND.

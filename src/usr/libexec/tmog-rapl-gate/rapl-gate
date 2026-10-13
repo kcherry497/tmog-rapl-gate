@@ -1,0 +1,66 @@
+#!/bin/bash -p
+# Root helper (via pkexec): open/close read access to RAPL energy counters for TMOG.
+trap '' INT QUIT HUP TERM
+set -eu
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+IFS=$' \t\n'
+export LC_ALL=C PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+shopt -s nullglob
+if (( $# != 1 )) || [[ $1 != open && $1 != close ]]; then
+  echo 'usage: rapl-gate open|close' >&2
+  exit 2
+fi
+real=/usr/bin/tmog-task-manager.real
+state=/run/tmog-rapl-gate
+/usr/bin/mkdir -m 0700 -p "$state"
+[[ ! -L $state && -d $state && -O $state && $(/usr/bin/stat -c %a "$state") == 700 ]] || exit 1
+# The private directory prevents even read-only lock opens by other users.
+exec 9>"$state/lock"
+/usr/bin/flock -x -w 10 9
+starttime() {
+  start=
+  if read -r stat 2>/dev/null < "/proc/$1/stat"; then
+    read -ra fields <<< "${stat##*) }"
+    if [[ ${fields[0]:-Z} != Z && ${fields[19]:-} =~ ^[0-9]+$ ]]; then
+      start=${fields[19]}
+    fi
+  fi
+  [[ -n $start ]]
+}
+leases=()
+if [[ -f $state/leases ]]; then
+  while read -r pid saved || [[ -n $pid ]]; do
+    [[ $pid =~ ^[0-9]+$ && $saved =~ ^[0-9]+$ ]] || continue
+    if [[ $pid != "$PPID" ]] && starttime "$pid" && [[ $start == "$saved" ]]; then
+      leases+=("$pid $saved")
+    fi
+  done < "$state/leases"
+fi
+if [[ $1 == open ]]; then
+  starttime "$PPID" || exit 1
+  leases+=("$PPID $start")
+fi
+temp=$(/usr/bin/mktemp -p "$state")
+for lease in "${leases[@]}"; do printf '%s\n' "$lease"; done > "$temp"
+/usr/bin/mv -f -- "$temp" "$state/leases"
+if [[ $1 == close ]]; then
+  (( ${#leases[@]} == 0 )) || exit 0
+  for p in /proc/[0-9]*; do
+    exe=$(/usr/bin/readlink "$p/exe" 2>/dev/null) || continue
+    [[ $exe != "$real" && $exe != "$real (deleted)" ]] || exit 0
+  done
+fi
+mode=o+r
+[[ $1 != close ]] || mode=o-r
+for f in /sys/class/powercap/*/energy_uj; do
+  target=$(/usr/bin/readlink -f "$f") || exit 1
+  [[ $target == /sys/devices/* && -f $target && ! -L $target ]] || exit 1
+  /usr/bin/chmod "$mode" -- "$target"
+done
+if [[ $1 == open ]]; then
+  /usr/bin/logger -t tmog-rapl-gate "opened energy_uj for uid ${PKEXEC_UID:-?}" || :
+else
+  /usr/bin/logger -t tmog-rapl-gate "relocked energy_uj (uid ${PKEXEC_UID:-?})" || :
+fi
+exit 0

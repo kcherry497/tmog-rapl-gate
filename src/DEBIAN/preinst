@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+case "${1:-}" in
+  install|upgrade)
+    dpkg-divert --package tmog-rapl-gate --add --rename \
+      --divert /usr/bin/tmog-task-manager.real /usr/bin/tmog-task-manager ;;
+  abort-upgrade) : ;;
+esac
+exit 0

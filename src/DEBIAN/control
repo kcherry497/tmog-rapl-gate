@@ -1,0 +1,14 @@
+Package: tmog-rapl-gate
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: taskmanagerog, pkexec
+Maintainer: Kevin Cherry <17479255+kcherry497@users.noreply.github.com>
+Description: Open RAPL energy counters only while Task Manager TMOG runs
+ Since kernel 5.10 (CVE-2020-8694, PLATYPUS) /sys/class/powercap/*/energy_uj
+ is readable only by root, so TMOG's Power panel shows "Access denied" for
+ normal users. This add-on wraps tmog-task-manager: on launch a polkit-gated
+ root helper grants read access, and when the last TMOG instance exits it
+ restores root-only access. No udev rule, no group, no boot-time change.
+ TMOG itself is not modified; its binary is diverted to tmog-task-manager.real.

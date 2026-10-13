@@ -1,0 +1,41 @@
+#!/bin/bash -p
+# Installed by tmog-rapl-gate (dpkg-diverts the vendor binary to .real): open RAPL counters only while TMOG runs.
+set -u
+real=/usr/bin/tmog-task-manager.real
+gate=/usr/libexec/tmog-rapl-gate/rapl-gate
+child=
+relocked=0
+signal_status=0
+
+relock() {
+  ((relocked)) && return 0
+  relocked=1
+  pkexec --disable-internal-agent "$gate" close >/dev/null 2>&1 || echo 'tmog-rapl-gate: relock failed' >&2
+}
+
+on_signal() {
+  (( signal_status )) || signal_status=$1
+  if [[ -n $child ]]; then kill -TERM "$child" 2>/dev/null || :; fi
+}
+
+trap relock EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
+
+# A failed open still permits TMOG to report unavailable counters.
+pkexec --disable-internal-agent "$gate" open >/dev/null 2>&1
+if (( signal_status )); then exit "$signal_status"; fi
+(exec -a "$0" "$real" "$@") <&0 &
+child=$!
+if (( signal_status )); then kill -TERM "$child" 2>/dev/null || :; fi
+while :; do
+  wait "$child"
+  status=$?
+  if (( signal_status )) && kill -0 "$child" 2>/dev/null; then continue; fi
+  break
+done
+child=
+relock
+(( signal_status == 0 )) || status=$signal_status
+exit "$status"

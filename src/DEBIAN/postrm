@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "${1:-}" in
+  remove|abort-install|disappear)
+    dpkg-divert --package tmog-rapl-gate --remove --rename \
+      --divert /usr/bin/tmog-task-manager.real /usr/bin/tmog-task-manager
+    for f in /sys/class/powercap/*/energy_uj; do
+      [ ! -e "$f" ] || chmod o-r "$f" || :
+    done
+    rm -rf /run/tmog-rapl-gate
+    ;;
+  purge|upgrade|failed-upgrade|abort-upgrade) : ;;
+esac
+exit 0
